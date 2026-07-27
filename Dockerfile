@@ -26,9 +26,9 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=build /app/.wasp/out /app/.wasp/out
-COPY nginx.conf /etc/nginx/conf.d/default.conf
-COPY proxy_params /etc/nginx/proxy_params
-COPY entrypoint.sh /app/entrypoint.sh
+COPY runtime/nginx.conf /etc/nginx/conf.d/default.conf
+COPY runtime/proxy_params /etc/nginx/proxy_params
+COPY runtime/entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh && nginx -t
 ENV NODE_ENV=production
 EXPOSE 10000
