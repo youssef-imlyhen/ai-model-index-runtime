@@ -1,0 +1,80 @@
+name: Publish AI Model Index runtime
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: Private ai-model-index ref to package
+        required: true
+        default: main
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: publish-ai-model-index-runtime
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout runtime publisher
+        uses: actions/checkout@v4
+        with:
+          path: runtime
+
+      - name: Checkout private application source
+        uses: actions/checkout@v4
+        with:
+          repository: youssef-imlyhen/ai-model-index
+          ref: ${{ inputs.source_ref }}
+          path: source
+          ssh-key: ${{ secrets.SOURCE_DEPLOY_KEY }}
+          persist-credentials: false
+
+      - name: Resolve source identity
+        id: source
+        shell: bash
+        run: |
+          echo "sha=$(git -C source rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "short_sha=$(git -C source rev-parse --short=12 HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and publish immutable runtime image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: runtime/Dockerfile
+          push: true
+          platforms: linux/amd64
+          build-args: |
+            SOURCE_SHA=${{ steps.source.outputs.sha }}
+            SOURCE_REF=${{ inputs.source_ref }}
+            REACT_APP_API_URL=https://ai-model-index-server.onrender.com
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/ai-model-index-runtime:${{ steps.source.outputs.sha }}
+            ghcr.io/${{ github.repository_owner }}/ai-model-index-runtime:latest
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ steps.source.outputs.sha }}
+            org.opencontainers.image.title=AI Model Index Runtime
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Record image identity
+        run: |
+          echo "### Runtime image published" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Source: \`${{ steps.source.outputs.sha }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Image: \`ghcr.io/${{ github.repository_owner }}/ai-model-index-runtime:${{ steps.source.outputs.sha }}\`" >> "$GITHUB_STEP_SUMMARY"
